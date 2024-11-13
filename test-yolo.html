@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YOLO Object Detection</title>
+  <style>
+    video, canvas {
+      display: block;
+      margin: 0 auto;
+      max-width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <h2>YOLO Object Detection</h2>
+  <video id="camera" autoplay playsinline></video>
+  <canvas id="canvas"></canvas>
+
+  <!-- TensorFlow.js Library -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <!-- Load the YOLO model script located in the same directory -->
+  <script src="./yolo.js"></script>
+
+  <script>
+    function isMobile() {
+      return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
+    }
+
+    async function setupCamera() {
+      const video = document.getElementById('camera');
+      const constraints = isMobile()
+        ? {
+            video: {
+              facingMode: { exact: 'environment' },
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            }
+          }
+        : {
+            video: {
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            }
+          };
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = stream;
+        return new Promise((resolve) => {
+          video.onloadedmetadata = () => resolve(video);
+        });
+      } catch (error) {
+        console.error("Camera setup failed: ", error);
+        alert("Camera access is required to use this feature.");
+      }
+    }
+
+    async function runObjectDetection(model, video) {
+      const canvas = document.getElementById('canvas');
+      const context = canvas.getContext('2d');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      const detectFrame = async () => {
+        // Perform YOLO prediction
+        const predictions = await model.predict(video); // Ensure the `predict` method is compatible with your model
+        
+        // Clear and redraw the canvas
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Scale factor for mapping YOLO model's coordinates to canvas
+        const scaleX = canvas.width / video.videoWidth;
+        const scaleY = canvas.height / video.videoHeight;
+
+        // Draw bounding boxes and labels
+        predictions.forEach(pred => {
+          const [x, y, w, h] = pred.bbox;
+          const scaledX = x * scaleX;
+          const scaledY = y * scaleY;
+          const scaledW = w * scaleX;
+          const scaledH = h * scaleY;
+
+          // Draw bounding box
+          context.strokeStyle = 'red';
+          context.lineWidth = 2;
+          context.strokeRect(scaledX, scaledY, scaledW, scaledH);
+
+          // Draw label with confidence
+          const text = `${pred.class} (${Math.round(pred.confidence * 100)}%)`;
+          context.font = '18px Arial';
+          context.fillStyle = 'red';
+          context.fillText(text, scaledX, scaledY > 10 ? scaledY - 5 : 10);
+        });
+
+        requestAnimationFrame(detectFrame);
+      };
+
+      detectFrame();
+    }
+
+    async function main() {
+      const video = await setupCamera();
+      if (video) {
+        // Load the YOLO model assuming it is in the same directory as the HTML file
+        const model = await tf.loadGraphModel('./yolo.js'); // Ensure this path and format are correct
+        await runObjectDetection(model, video);
+      }
+    }
+
+    main().catch(console.error);
+  </script>
+</body>
+</html>
